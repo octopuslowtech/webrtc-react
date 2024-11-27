@@ -24,7 +24,7 @@ function App() {
 
       const pc = new RTCPeerConnection({
         iceServers: [
-          { urls: "stun:stun.l.google.com:19302" },
+          // { urls: "stun:stun.l.google.com:19302" },
           { 
             urls: "turn:turn.onox.pro:3478",
             username: "octopus",
