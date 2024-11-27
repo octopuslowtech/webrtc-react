@@ -13,6 +13,7 @@ function App() {
     const newPeer = new Peer(null, {
       config: {
         iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
           { 
             urls: "turns:turn.onox.pro:443",
             username: "octopus",
@@ -28,7 +29,6 @@ function App() {
     });
 
     newPeer.on("call", (call) => {
-      // Trả lời cuộc gọi với stream cục bộ
       call.answer(localStreamRef.current);
 
       call.on("stream", (remoteStream) => {
