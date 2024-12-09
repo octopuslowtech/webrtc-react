@@ -1,172 +1,151 @@
-import { useState, useEffect } from "react";
-import { HubConnectionBuilder } from "@microsoft/signalr";
+
+import { useState, useRef } from "react";
 
 function App() {
-  const [signalRConnection, setSignalRConnection] = useState(null);
-  const [peerConnection, setPeerConnection] = useState(null);
-  const [dataChannel, setDataChannel] = useState(null);
-  const [messages, setMessages] = useState([]);
-  const [currentMessage, setCurrentMessage] = useState("");
+  const [localSDP, setLocalSDP] = useState("");
+  const [remoteSDP, setRemoteSDP] = useState("");
+  const [connection, setConnection] = useState(null);
+  const [localStream, setLocalStream] = useState(null);
+  const [isBroadcaster, setIsBroadcaster] = useState(false);
 
-  useEffect(() => {
-    const initSignalR = async () => {
-      const connection = new HubConnectionBuilder()
-        .withUrl("https://api.maxcloudphone.com/deviceHub")
-        .build();
+  const localVideoRef = useRef(null);
+  const remoteVideoRef = useRef(null);
 
-      connection.on("ReceiveSignal", async (data) => {
-        const signal = JSON.parse(data);
+  const initializeBroadcaster = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({
+        video: true,
+        audio: true,
+      });
+      setLocalStream(stream);
+      if (localVideoRef.current) {
+        localVideoRef.current.srcObject = stream;
+      }
+      setIsBroadcaster(true);
 
-        if (signal.type === "offer") {
-          await handleRemoteOffer(signal.sdp);
-        } else if (signal.type === "answer") {
-          await peerConnection.setRemoteDescription(
-            new RTCSessionDescription(signal.sdp)
-          );
-        } else if (signal.type === "candidate") {
-          await peerConnection.addIceCandidate(
-            new RTCIceCandidate(signal.candidate)
-          );
-        }
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          { urls: "stun:stun.l.google.com:19302" },
+          { 
+            urls: "turn:turn.onox.pro:3478",
+            username: "octopus",
+            credential: "0559551321"
+          }
+        ],
       });
 
-      await connection.start();
-      setSignalRConnection(connection);
-      initializePeerConnection();
-      setMessages((prev) => [...prev, { text: "Connected", received: true }]);
-    };
+      stream.getTracks().forEach((track) => {
+        pc.addTrack(track, stream);
+      });
 
-    initSignalR();
-  }, []);
+      setConnection(pc);
+    } catch (error) {
+      console.error("Error initializing broadcaster:", error);
+    }
+  };
 
-  const initializePeerConnection = () => {
-    const pc = new RTCPeerConnection({
-      iceServers: [
-        { urls: "stun:stun.l.google.com:19302" },
-        {
-          urls: "turn:turn.onox.pro:3478",
-          username: "octopus",
-          credential: "0559551321",
-        },
-      ],
-    });
+  const initializeViewer = async () => {
+    try {
+      const pc = new RTCPeerConnection({
+        iceServers: [
+          // { urls: "stun:stun.l.google.com:19302" },
+          { 
+            urls: "turn:turn.onox.pro:3478",
+            username: "octopus",
+            credential: "octopus"
+          }
+        ],
+      });
 
-    // Create data channel
-    const channel = pc.createDataChannel("chat");
-    channel.onmessage = handleReceiveMessage;
-    setDataChannel(channel);
+      pc.ontrack = (event) => {
+        if (remoteVideoRef.current) {
+          remoteVideoRef.current.srcObject = event.streams[0];
+        }
+      };
 
-    // Handle incoming data channel
-    pc.ondatachannel = (event) => {
-      const incomingChannel = event.channel;
-      incomingChannel.onmessage = handleReceiveMessage;
-      setDataChannel(incomingChannel);
-    };
+      setConnection(pc);
+      setIsBroadcaster(false);
+    } catch (error) {
+      console.error("Error initializing viewer:", error);
+    }
+  };
 
-    pc.onicecandidate = (event) => {
-      if (event.candidate) {
-        signalRConnection.invoke(
-          "SendSignal",
-          JSON.stringify({
-            type: "candidate",
-            candidate: event.candidate,
-          })
-        );
+  const createOffer = async () => {
+    if (!connection || !isBroadcaster) return;
+    try {
+      const offer = await connection.createOffer();
+      await connection.setLocalDescription(offer);
+      setLocalSDP(JSON.stringify(offer));
+    } catch (error) {
+      console.error("Error creating offer:", error);
+    }
+  };
+
+  const setRemoteDescription = async () => {
+    if (!connection) return;
+    try {
+      const remoteDesc = JSON.parse(remoteSDP);
+      await connection.setRemoteDescription(new RTCSessionDescription(remoteDesc));
+
+      if (!isBroadcaster && remoteDesc.type === "offer") {
+        const answer = await connection.createAnswer();
+        await connection.setLocalDescription(answer);
+        setLocalSDP(JSON.stringify(answer));
       }
-    };
-
-    setPeerConnection(pc);
-  };
-
-  const handleRemoteOffer = async (sdp) => {
-    await peerConnection.setRemoteDescription(new RTCSessionDescription(sdp));
-    const answer = await peerConnection.createAnswer();
-    await peerConnection.setLocalDescription(answer);
-
-    signalRConnection.invoke(
-      "SendSignal",
-      JSON.stringify({
-        type: "answer",
-        sdp: answer,
-      })
-    );
-  };
-
-  const handleReceiveMessage = (event) => {
-    setMessages((prev) => [...prev, { text: event.data, received: true }]);
-  };
-
-  const sendMessage = () => {
-    if (currentMessage && dataChannel) {
-      dataChannel.send(currentMessage);
-      setMessages((prev) => [...prev, { text: currentMessage, received: false }]);
-      setCurrentMessage("");
+    } catch (error) {
+      console.error("Error setting remote description:", error);
     }
   };
 
   return (
-    <div className="chat-container">
-      <div className="messages">
-        {messages.map((msg, index) => (
-          <div
-            key={index}
-            className={`message ${msg.received ? "received" : "sent"}`}
-          >
-            {msg.text}
-          </div>
-        ))}
+    <div style={{ padding: "20px" }}>
+      <h1>WebRTC Livestream</h1>
+      
+      <div>
+        <button onClick={initializeBroadcaster}>Start Broadcasting</button>
+        <button onClick={initializeViewer}>Join as Viewer</button>
       </div>
-      <div className="input-area">
-        <input
-          type="text"
-          value={currentMessage}
-          onChange={(e) => setCurrentMessage(e.target.value)}
-          onKeyPress={(e) => e.key === "Enter" && sendMessage()}
+
+      {isBroadcaster ? (
+        <div style={{ marginTop: "20px" }}>
+          <h3>Broadcaster View</h3>
+          <video 
+            ref={localVideoRef} 
+            autoPlay 
+            muted 
+            playsInline
+            style={{ width: "300px" }} 
+          />
+          <button onClick={createOffer}>Start Stream</button>
+        </div>
+      ) : (
+        <div style={{ marginTop: "20px" }}>
+          <h3>Viewer View</h3>
+          <video 
+            ref={remoteVideoRef} 
+            autoPlay 
+            playsInline
+            style={{ width: "300px" }} 
+          />
+        </div>
+      )}
+
+      <div style={{ marginTop: "20px" }}>
+        <h3>Connection Setup</h3>
+        <textarea
+          value={localSDP}
+          readOnly
+          placeholder="Local SDP"
+          style={{ width: "100%", height: "100px" }}
         />
-        <button onClick={sendMessage}>Send</button>
+        <textarea
+          value={remoteSDP}
+          onChange={(e) => setRemoteSDP(e.target.value)}
+          placeholder="Remote SDP"
+          style={{ width: "100%", height: "100px" }}
+        />
+        <button onClick={setRemoteDescription}>Set Remote Description</button>
       </div>
-      <style jsx>{`
-        .chat-container {
-          width: 400px;
-          height: 600px;
-          border: 1px solid #ccc;
-          display: flex;
-          flex-direction: column;
-        }
-        .messages {
-          flex: 1;
-          overflow-y: auto;
-          padding: 10px;
-        }
-        .message {
-          margin: 5px;
-          padding: 8px;
-          border-radius: 8px;
-          max-width: 70%;
-        }
-        .sent {
-          background-color: #007bff;
-          color: white;
-          margin-left: auto;
-        }
-        .received {
-          background-color: #e9ecef;
-          margin-right: auto;
-        }
-        .input-area {
-          display: flex;
-          padding: 10px;
-          border-top: 1px solid #ccc;
-        }
-        input {
-          flex: 1;
-          margin-right: 10px;
-          padding: 5px;
-        }
-        button {
-          padding: 5px 15px;
-        }
-      `}</style>
     </div>
   );
 }
