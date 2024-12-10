@@ -12,18 +12,18 @@ function App() {
   const [targetConnectionId, setTargetConnectionId] = useState('');
 
   const iceServers = [
-    // { urls: 'stun:stun.l.google.com:19302' },
-    // { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
     {
       urls: 'turn:turn.onox.pro:3478',
       username: 'octopus',
       credential: '0559551321'
     },
-    // {
-    //   urls: 'turn:relay1.expressturn.com:3478',
-    //   username: 'efLDK4QL9WAH27Z6AJ',
-    //   credential: 'E5AwlcaSDOiKwx4U'
-    // }
+    {
+      urls: 'turn:relay1.expressturn.com:3478',
+      username: 'efLDK4QL9WAH27Z6AJ',
+      credential: 'E5AwlcaSDOiKwx4U'
+    }
   ];
 
   useEffect(() => {
@@ -80,6 +80,7 @@ function App() {
         console.error('Lỗi data channel:', error);
       };
       
+      channel.onmessage = handleReceiveMessage;
       setDataChannel(channel);
       if(!channel)
         console.log('channel is null');
@@ -166,26 +167,46 @@ function App() {
   };
 
   const handleOffer = async (offerSdp, senderConnectionId) => {
-    if (!peerConnectionRef.current) {
-      console.error("peerConnection chưa được khởi tạo");
-      return;
+    try {
+        if (!peerConnectionRef.current) {
+            throw new Error("peerConnection chưa được khởi tạo");
+        }
+
+        console.log("Handling Offer...");
+        setTargetConnectionId(senderConnectionId);
+
+        // Wrap WebRTC operations in a Promise
+        await new Promise(async (resolve, reject) => {
+            try {
+                await peerConnectionRef.current.setRemoteDescription(
+                    new RTCSessionDescription(offerSdp)
+                );
+                const answer = await peerConnectionRef.current.createAnswer();
+                await peerConnectionRef.current.setLocalDescription(answer);
+                
+                // Wait a short time to ensure ICE gathering is complete
+                setTimeout(() => {
+                    console.log("Sending answer...");
+                    signalRConnectionRef.current.invoke(
+                        "SendSignal",
+                        senderConnectionId,
+                        JSON.stringify({
+                            type: 'answer',
+                            sdp: answer
+                        })
+                    );
+                    resolve();
+                }, 1000); // 1 second delay
+
+            } catch (error) {
+                reject(error);
+            }
+        });
+
+    } catch (error) {
+        console.error("Error in handleOffer:", error);
     }
-
-    console.log("Handling Offer...");
-
-    // Thiết lập targetConnectionId để trả lời lại cho người gửi
-    setTargetConnectionId(senderConnectionId);
-
-    await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offerSdp));
-    const answer = await peerConnectionRef.current.createAnswer();
-    await peerConnectionRef.current.setLocalDescription(answer);
-    console.log("Sending answer...");
-    signalRConnectionRef.current.invoke("SendSignal", senderConnectionId, JSON.stringify({
-      type: 'answer',
-      sdp: answer
-    }));
-  };
-
+};
 
   const handleAnswer = async (answerSdp) => {
     if (!peerConnectionRef.current) {
@@ -225,12 +246,10 @@ function App() {
     <div style={{ padding: "20px" }}>
       <h1>WebRTC Chat</h1>
 
-      {/* Hiển thị connectionId của bạn */}
       <div>
         <p><strong>Your Connection ID:</strong> {connectionId}</p>
       </div>
 
-      {/* Nhập ID của người nhận */}
       <div>
         <label>
           Nhập Connection ID của người nhận:
