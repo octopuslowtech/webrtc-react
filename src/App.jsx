@@ -34,6 +34,10 @@ function App() {
   const initializePeerConnection = () => {
     const pc = new RTCPeerConnection({ iceServers });
 
+
+     
+      
+
     // Theo dõi trạng thái kết nối
     pc.onconnectionstatechange = () => {
       console.log('Trạng thái kết nối:', pc.connectionState);
@@ -49,8 +53,10 @@ function App() {
     };
 
     pc.onicecandidate = (event) => {
+      if (event.candidate) {
+        console.log('Using ICE server:', event.candidate.address);
+      }
       if (event.candidate && signalRConnectionRef.current && targetConnectionId) {
-        console.log('Đang gửi ICE candidate:', event.candidate.type);
         signalRConnectionRef.current.invoke("SendSignal", targetConnectionId, JSON.stringify({
           type: 'candidate',
           candidate: event.candidate
@@ -127,60 +133,6 @@ function App() {
     setConnectionId(connId);
   };
 
-  const createOffer = async () => {
-    if (!peerConnectionRef.current) {
-      console.error("peerConnection chưa được khởi tạo");
-      return;
-    }
-
-    if (!targetConnectionId) {
-      console.error("Chưa nhập Connection ID của người nhận");
-      return;
-    }
-
-    console.log("Creating offer...");
-
-    const channel = peerConnectionRef.current.createDataChannel('chat');
-    channel.onmessage = handleReceiveMessage;
-    channel.onopen = () => {
-      console.log("Data channel đã mở");
-      setIsConnected(true);
-    };
-    channel.onclose = () => {
-      console.log("Data channel đã đóng");
-      setIsConnected(false);
-    };
-
-    setDataChannel(channel);
-
-    const offer = await peerConnectionRef.current.createOffer();
-
-    await peerConnectionRef.current.setLocalDescription(offer);
-
-
-    await new Promise(resolve => {
-      console.log("Promise 1");
-      if (peerConnectionRef.current.iceGatheringState === 'complete') {
-        console.log("Promise 2");
-        resolve();
-      } else {
-        peerConnectionRef.current.addEventListener('icegatheringstatechange', () => {
-          if (peerConnectionRef.current.iceGatheringState === 'complete') {
-            console.log("Promise 3");
-            resolve();
-          }
-        });
-      }
-    });
-
-    console.log("Sending offer...");
-    signalRConnectionRef.current.invoke("SendSignal", targetConnectionId, JSON.stringify({
-      type: 'offer',
-      sdp: peerConnectionRef.current.localDescription
-    }));
-
-  };
-
   const handleOffer = async (offerSdp, senderConnectionId) => {
     if (!peerConnectionRef.current) {
       console.error("peerConnection chưa được khởi tạo");
@@ -239,21 +191,9 @@ function App() {
   return (
     <div style={{ padding: "20px" }}>
       <h1>WebRTC Chat</h1>
-
+   
       <div>
         <p><strong>Your Connection ID:</strong> {connectionId}</p>
-      </div>
-
-      <div>
-        <label>
-          Nhập Connection ID của người nhận:
-          <input
-            type="text"
-            value={targetConnectionId}
-            onChange={(e) => setTargetConnectionId(e.target.value)}
-            style={{ marginLeft: '10px', width: '300px' }}
-          />
-        </label>
       </div>
 
       <div>
@@ -264,9 +204,7 @@ function App() {
         )}
       </div>
 
-      <div>
-        <button onClick={createOffer}>Create Connection</button>
-      </div>
+  
 
       <div style={{ marginTop: "20px" }}>
         <h3>Chat</h3>
