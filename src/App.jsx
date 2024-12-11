@@ -159,7 +159,6 @@ function App() {
 
   return (
     <div style={{ padding: "20px" }}>
-      <h1>WebRTC Chat</h1>
       <div style={{ marginBottom: "20px" }}>
         <p><strong>Your Connection ID:</strong> {connectionId}</p>
         <p><strong>App Connection ID:</strong> {targetConnectionId}</p>
@@ -174,7 +173,7 @@ function App() {
       </div>
 
 
-      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+      <div style={{ maxWidth: '320px', margin: '0 auto' }}>
         {remoteStream && (
           <video
             autoPlay
