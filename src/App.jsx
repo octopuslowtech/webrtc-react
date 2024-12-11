@@ -31,6 +31,15 @@ function App() {
   useEffect(() => {
     initializePeerConnection();
     connectSignalR();
+
+    return () => {
+      if (signalRConnectionRef.current) {
+        signalRConnectionRef.current.stop();
+      }
+      if (peerConnectionRef.current) {
+        peerConnectionRef.current.close();
+      }
+    };
   }, []);
 
   const initializePeerConnection = () => {
@@ -55,6 +64,20 @@ function App() {
 
       } else {
         console.log('Kết thúc thu thập candidates');
+      }
+    };
+
+
+    pc.oniceconnectionstatechange = () => {
+      console.log("ICE Connection State:", pc.iceConnectionState);
+      setIsConnected(pc.iceConnectionState === 'connected');
+    };
+
+    pc.onconnectionstatechange = () => {
+      if (pc.connectionState === 'disconnected' ||
+        pc.connectionState === 'failed' ||
+        pc.connectionState === 'closed') {
+        setIsConnected(false);
       }
     };
 
@@ -172,23 +195,29 @@ function App() {
         </div>
       </div>
 
-
-      <div style={{ maxWidth: '320px', margin: '0 auto' }}>
-        {remoteStream && (
-          <video
-            autoPlay
-            playsInline
-            ref={(video) => {
-              if (video) video.srcObject = remoteStream;
-            }}
-            style={{
-              width: '100%',
-              border: '1px solid #ccc',
-              borderRadius: '8px'
-            }}
-          />
-        )}
+      <div style={{
+        width: '100%',
+        maxWidth: '800px',
+        aspectRatio: '16/9', // Set proper aspect ratio
+        overflow: 'hidden'
+      }}>
+        <video
+          id="remoteVideo"
+          autoPlay
+          playsInline
+          ref={(video) => {
+            if (video) video.srcObject = remoteStream;
+          }}
+          style={{
+            width: '100%',
+            height: '100%',
+            objectFit: 'cover', // or 'contain' based on your needs
+            border: '1px solid #ccc',
+            borderRadius: '8px'
+          }}
+        />
       </div>
+
 
     </div>
   );
