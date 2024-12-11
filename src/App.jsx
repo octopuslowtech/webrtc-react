@@ -37,20 +37,6 @@ function App() {
   const initializePeerConnection = () => {
     const pc = new RTCPeerConnection({ iceServers });
 
-    // Theo dõi trạng thái kết nối
-    pc.onconnectionstatechange = () => {
-      console.log('Trạng thái kết nối:', pc.connectionState);
-    };
-
-    // Theo dõi trạng thái ICE
-    pc.oniceconnectionstatechange = () => {
-      console.log('Trạng thái ICE:', pc.iceConnectionState);
-    };
-
-    pc.onicegatheringstatechange = () => {
-      console.log('Trạng thái thu thập ICE:', pc.iceGatheringState);
-    };
-
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         console.log('Using ICE server:', event.candidate.address);
@@ -58,14 +44,17 @@ function App() {
       if (event.candidate && signalRConnectionRef.current && targetConnectionId) {
         signalRConnectionRef.current.invoke("SendSignal", targetConnectionId, JSON.stringify({
           type: 'candidate',
-          candidate: event.candidate
+          label: event.candidate.sdpMLineIndex,
+          id: event.candidate.sdpMid,
+          candidate: event.candidate.candidate
         }));
+
+
       } else {
         console.log('Kết thúc thu thập candidates');
       }
     };
 
-    // Theo dõi trạng thái data channel
     pc.ondatachannel = (event) => {
       const channel = event.channel;
       console.log('Data channel được tạo:', channel.label);
@@ -103,19 +92,25 @@ function App() {
     signalRConnectionRef.current = connection;
 
     connection.on('ReceiveSignal', async (senderConnectionId, signalData) => {
-      console.log('Received signal from:', senderConnectionId + ' - ' + signalData);
+      console.log('Received signal from:', senderConnectionId + " - " + signalData);
       try {
         const signal = JSON.parse(signalData);
         if (signal.type === 'offer') {
           console.log("Received offer...");
-          await handleOffer(signal.sdp, senderConnectionId);
+          await handleOffer(signal, senderConnectionId);
         } else if (signal.type === 'answer') {
           console.log("Received answer...");
           await handleAnswer(signal.sdp);
         } else if (signal.type === 'candidate') {
           console.log("Received ICE candidate...");
           try {
-            await peerConnectionRef.current.addIceCandidate(new RTCIceCandidate(signal.candidate));
+            let candidate = new RTCIceCandidate({
+              sdpMid: signal.sdpMid,
+              sdpMLineIndex: signal.sdpMLineIndex,
+              candidate: signal.candidate
+            });
+
+            await peerConnectionRef.current.addIceCandidate(candidate);
             console.log("Successfully added ICE candidate");
           } catch (e) {
             console.error("Error adding received ICE candidate", e);
@@ -132,7 +127,7 @@ function App() {
     setConnectionId(connId);
   };
 
-  const handleOffer = async (offerSdp, senderConnectionId) => {
+  const handleOffer = async (signal, senderConnectionId) => {
     if (!peerConnectionRef.current) {
       console.error("peerConnection chưa được khởi tạo");
       return;
@@ -142,13 +137,28 @@ function App() {
 
     setTargetConnectionId(senderConnectionId);
 
-    await peerConnectionRef.current.setRemoteDescription(new RTCSessionDescription(offerSdp));
+    try {
+      let offerSession = new RTCSessionDescription({
+        sdp: signal.sdp,
+        type: signal.type
+      });
+
+      await peerConnectionRef.current.setRemoteDescription(offerSession);
+
+    }
+    catch (e) {
+      console.log("handleOffer Error : " + e);
+    }
+
+    console.log("Sending answer...");
+
     const answer = await peerConnectionRef.current.createAnswer();
     await peerConnectionRef.current.setLocalDescription(answer);
-    console.log("Sending answer...");
-    signalRConnectionRef.current.invoke("SendSignal", senderConnectionId, JSON.stringify({
-      type: 'answer',
-      sdp: answer
+
+
+    await signalRConnectionRef.current.invoke("SendSignal", senderConnectionId, JSON.stringify({
+      type: "answer",
+      sdp: answer.sdp,
     }));
   };
 
@@ -190,9 +200,10 @@ function App() {
   return (
     <div style={{ padding: "20px" }}>
       <h1>WebRTC Chat</h1>
-   
+
       <div>
         <p><strong>Your Connection ID:</strong> {connectionId}</p>
+        <p><strong>App Connection ID:</strong> {targetConnectionId}</p>
       </div>
 
       <div>
@@ -203,7 +214,7 @@ function App() {
         )}
       </div>
 
-  
+
 
       <div style={{ marginTop: "20px" }}>
         <h3>Chat</h3>
