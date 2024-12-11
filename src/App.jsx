@@ -4,12 +4,11 @@ import { HubConnectionBuilder } from '@microsoft/signalr';
 function App() {
   const peerConnectionRef = useRef(null);
   const signalRConnectionRef = useRef(null);
-  const [messages, setMessages] = useState([]);
-  const [currentMessage, setCurrentMessage] = useState("");
-  const [dataChannel, setDataChannel] = useState(null);
   const [isConnected, setIsConnected] = useState(false);
   const [connectionId, setConnectionId] = useState('');
   const [targetConnectionId, setTargetConnectionId] = useState('');
+  const [remoteStream, setRemoteStream] = useState(null);
+
 
   const iceServers = [
     { urls: 'stun:stun.l.google.com:19302' },
@@ -37,6 +36,10 @@ function App() {
   const initializePeerConnection = () => {
     const pc = new RTCPeerConnection({ iceServers });
 
+    pc.ontrack = (event) => {
+      setRemoteStream(event.streams[0]);
+    };
+
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         console.log('Using ICE server:', event.candidate.address);
@@ -53,31 +56,6 @@ function App() {
       } else {
         console.log('Kết thúc thu thập candidates');
       }
-    };
-
-    pc.ondatachannel = (event) => {
-      const channel = event.channel;
-      console.log('Data channel được tạo:', channel.label);
-
-      channel.onopen = () => {
-        console.log('Data channel đã mở, trạng thái:', channel.readyState);
-        setIsConnected(true);
-        setDataChannel(channel);
-      };
-
-      channel.onclose = () => {
-        console.log('Data channel đã đóng');
-        setIsConnected(false);
-      };
-
-      channel.onerror = (error) => {
-        console.error('Lỗi data channel:', error);
-      };
-
-      channel.onmessage = handleReceiveMessage;
-      setDataChannel(channel);
-      if (!channel)
-        console.log('channel is null');
     };
 
     peerConnectionRef.current = pc;
@@ -179,81 +157,41 @@ function App() {
     }
   };
 
-  const handleReceiveMessage = (event) => {
-    setMessages(prev => [...prev, { text: event.data, received: true }]);
-  };
-
-  const sendMessage = () => {
-    if (!dataChannel) {
-      console.log('dataChannel is undefined');
-      return;
-    }
-    if (dataChannel.readyState !== 'open') {
-      console.log(`Không thể gửi tin nhắn - trạng thái kênh: ${dataChannel.readyState}`);
-      return;
-    }
-    dataChannel.send(currentMessage);
-    setMessages(prev => [...prev, { text: currentMessage, received: false }]);
-    setCurrentMessage('');
-  };
-
   return (
     <div style={{ padding: "20px" }}>
       <h1>WebRTC Chat</h1>
-
-      <div>
+      <div style={{ marginBottom: "20px" }}>
         <p><strong>Your Connection ID:</strong> {connectionId}</p>
         <p><strong>App Connection ID:</strong> {targetConnectionId}</p>
+
+        <div>
+          {isConnected ? (
+            <p style={{ color: 'green' }}>Đã kết nối thành công!</p>
+          ) : (
+            <p style={{ color: 'red' }}>Chưa kết nối</p>
+          )}
+        </div>
       </div>
 
-      <div>
-        {isConnected ? (
-          <p style={{ color: 'green' }}>Đã kết nối thành công!</p>
-        ) : (
-          <p style={{ color: 'red' }}>Chưa kết nối</p>
+
+      <div style={{ maxWidth: '800px', margin: '0 auto' }}>
+        {remoteStream && (
+          <video
+            autoPlay
+            playsInline
+            ref={(video) => {
+              if (video) video.srcObject = remoteStream;
+            }}
+            style={{
+              width: '100%',
+              border: '1px solid #ccc',
+              borderRadius: '8px'
+            }}
+          />
         )}
       </div>
 
-
-
-      <div style={{ marginTop: "20px" }}>
-        <h3>Chat</h3>
-        <div className="messages" style={{
-          height: '400px',
-          border: '1px solid #ccc',
-          overflowY: 'auto',
-          padding: '10px',
-          marginBottom: '20px'
-        }}>
-          {messages.map((msg, index) => (
-            <div key={index} style={{
-              textAlign: msg.received ? 'left' : 'right',
-              margin: '5px',
-              padding: '8px',
-              backgroundColor: msg.received ? '#e9ecef' : '#007bff',
-              color: msg.received ? 'black' : 'white',
-              borderRadius: '8px',
-              maxWidth: '70%',
-              marginLeft: msg.received ? '0' : 'auto'
-            }}>
-              {msg.text}
-            </div>
-          ))}
-        </div>
-        <div className="input-area" style={{ display: 'flex', gap: '10px' }}>
-          <input
-            type="text"
-            value={currentMessage}
-            onChange={(e) => setCurrentMessage(e.target.value)}
-            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
-            style={{ flex: 1 }}
-            placeholder="Nhập tin nhắn..."
-          />
-          <button onClick={sendMessage}>Gửi</button>
-        </div>
-      </div>
     </div>
   );
 }
-
 export default App;
