@@ -10,23 +10,27 @@ function App() {
   const [remoteStream, setRemoteStream] = useState(null);
 
 
+  const [messages, setMessages] = useState([]);
+  const [currentMessage, setCurrentMessage] = useState("");
+  const [dataChannel, setDataChannel] = useState(null);
+
   const iceServers = [
-    // { urls: 'stun:stun.l.google.com:19302' },
-    // { urls: 'stun:stun1.l.google.com:19302' },
-    // { urls: 'stun:stun2.l.google.com:19302' },
-    // { urls: 'stun:stun3.l.google.com:19302' },
-    // { urls: 'stun:stun4.l.google.com:19302' },
+    { urls: 'stun:stun.l.google.com:19302' },
+    { urls: 'stun:stun1.l.google.com:19302' },
+    { urls: 'stun:stun2.l.google.com:19302' },
+    { urls: 'stun:stun3.l.google.com:19302' },
+    { urls: 'stun:stun4.l.google.com:19302' },
     {
       urls: 'turn:turn.onox.pro:3478',
       username: 'octopus',
       credential: '0559551321'
     }
-    // ,
-    // {
-    //   urls: 'turn:relay1.expressturn.com:3478',
-    //   username: 'efLDK4QL9WAH27Z6AJ',
-    //   credential: 'E5AwlcaSDOiKwx4U'
-    // }
+    ,
+    {
+      urls: 'turn:relay1.expressturn.com:3478',
+      username: 'efLDK4QL9WAH27Z6AJ',
+      credential: 'E5AwlcaSDOiKwx4U'
+    }
   ];
 
   useEffect(() => {
@@ -80,6 +84,31 @@ function App() {
         pc.connectionState === 'closed') {
         setIsConnected(false);
       }
+    };
+
+    pc.ondatachannel = (event) => {
+      const channel = event.channel;
+      console.log('Data channel được tạo:', channel.label);
+
+      channel.onopen = () => {
+        console.log('Data channel đã mở, trạng thái:', channel.readyState);
+        setIsConnected(true);
+        setDataChannel(channel);
+      };
+
+      channel.onclose = () => {
+        console.log('Data channel đã đóng');
+        setIsConnected(false);
+      };
+
+      channel.onerror = (error) => {
+        console.error('Lỗi data channel:', error);
+      };
+
+      channel.onmessage = handleReceiveMessage;
+      setDataChannel(channel);
+      if (!channel)
+        console.log('channel is null');
     };
 
     peerConnectionRef.current = pc;
@@ -181,6 +210,25 @@ function App() {
     }
   };
 
+
+  const handleReceiveMessage = (event) => {
+    setMessages(prev => [...prev, { text: event.data, received: true }]);
+  };
+
+  const sendMessage = () => {
+    if (!dataChannel) {
+      console.log('dataChannel is undefined');
+      return;
+    }
+    if (dataChannel.readyState !== 'open') {
+      console.log(`Không thể gửi tin nhắn - trạng thái kênh: ${dataChannel.readyState}`);
+      return;
+    }
+    dataChannel.send(currentMessage);
+    setMessages(prev => [...prev, { text: currentMessage, received: false }]);
+    setCurrentMessage('');
+  };
+
   return (
     <div style={{ padding: "20px" }}>
       <div style={{ marginBottom: "20px" }}>
@@ -220,6 +268,42 @@ function App() {
       </div>
 
 
+      <div style={{ marginTop: "20px" }}>
+        <h3>Chat</h3>
+        <div className="messages" style={{
+          height: '400px',
+          border: '1px solid #ccc',
+          overflowY: 'auto',
+          padding: '10px',
+          marginBottom: '20px'
+        }}>
+          {messages.map((msg, index) => (
+            <div key={index} style={{
+              textAlign: msg.received ? 'left' : 'right',
+              margin: '5px',
+              padding: '8px',
+              backgroundColor: msg.received ? '#e9ecef' : '#007bff',
+              color: msg.received ? 'black' : 'white',
+              borderRadius: '8px',
+              maxWidth: '70%',
+              marginLeft: msg.received ? '0' : 'auto'
+            }}>
+              {msg.text}
+            </div>
+          ))}
+        </div>
+        <div className="input-area" style={{ display: 'flex', gap: '10px' }}>
+          <input
+            type="text"
+            value={currentMessage}
+            onChange={(e) => setCurrentMessage(e.target.value)}
+            onKeyPress={(e) => e.key === 'Enter' && sendMessage()}
+            style={{ flex: 1 }}
+            placeholder="Nhập tin nhắn..."
+          />
+          <button onClick={sendMessage}>Gửi</button>
+        </div>
+      </div>
     </div>
   );
 }
