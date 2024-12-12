@@ -11,21 +11,22 @@ function App() {
 
 
   const iceServers = [
-    { urls: 'stun:stun.l.google.com:19302' },
-    { urls: 'stun:stun1.l.google.com:19302' },
-    { urls: 'stun:stun2.l.google.com:19302' },
-    { urls: 'stun:stun3.l.google.com:19302' },
-    { urls: 'stun:stun4.l.google.com:19302' },
+    // { urls: 'stun:stun.l.google.com:19302' },
+    // { urls: 'stun:stun1.l.google.com:19302' },
+    // { urls: 'stun:stun2.l.google.com:19302' },
+    // { urls: 'stun:stun3.l.google.com:19302' },
+    // { urls: 'stun:stun4.l.google.com:19302' },
     {
       urls: 'turn:turn.onox.pro:3478',
       username: 'octopus',
       credential: '0559551321'
-    },
-    {
-      urls: 'turn:relay1.expressturn.com:3478',
-      username: 'efLDK4QL9WAH27Z6AJ',
-      credential: 'E5AwlcaSDOiKwx4U'
     }
+    // ,
+    // {
+    //   urls: 'turn:relay1.expressturn.com:3478',
+    //   username: 'efLDK4QL9WAH27Z6AJ',
+    //   credential: 'E5AwlcaSDOiKwx4U'
+    // }
   ];
 
   useEffect(() => {
