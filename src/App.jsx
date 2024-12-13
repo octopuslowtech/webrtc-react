@@ -1,12 +1,11 @@
 import { useState, useEffect, useRef } from 'react';
 import { HubConnectionBuilder } from '@microsoft/signalr';
+import VideoComponent from './VideoComponent';
 
 function App() {
   const peerConnectionRef = useRef(null);
   const signalRConnectionRef = useRef(null);
   const [isConnected, setIsConnected] = useState(false);
-  const [connectionId, setConnectionId] = useState('');
-  const [targetConnectionId, setTargetConnectionId] = useState('');
   const [remoteStream, setRemoteStream] = useState(null);
 
 
@@ -33,6 +32,14 @@ function App() {
     }
   ];
 
+  const videoRef = useRef(null);
+
+  useEffect(() => {
+    if (remoteStream && videoRef.current) {
+      videoRef.current.srcObject = remoteStream;
+    }
+  }, [remoteStream]);
+
   useEffect(() => {
     initializePeerConnection();
     connectSignalR();
@@ -51,15 +58,16 @@ function App() {
     const pc = new RTCPeerConnection({ iceServers });
 
     pc.ontrack = (event) => {
-      setRemoteStream(event.streams[0]);
+      if (event.streams && event.streams[0])
+        setRemoteStream(event.streams[0]);
     };
 
     pc.onicecandidate = (event) => {
       if (event.candidate) {
         console.log('Using ICE server:', event.candidate.address);
       }
-      if (event.candidate && signalRConnectionRef.current && targetConnectionId) {
-        signalRConnectionRef.current.invoke("SendSignal", targetConnectionId, JSON.stringify({
+      if (event.candidate && signalRConnectionRef.current) {
+        signalRConnectionRef.current.invoke("SendSignal", JSON.stringify({
           type: 'candidate',
           label: event.candidate.sdpMLineIndex,
           id: event.candidate.sdpMid,
@@ -115,10 +123,15 @@ function App() {
   };
 
   const connectSignalR = async () => {
+    const jwtToken = "";
+
     const connection = new HubConnectionBuilder()
-      .withUrl('https://api.maxcloudphone.com/deviceHub')
+      .withUrl('https://api.maxcloudphone.com/deviceHub', {
+        accessTokenFactory: () => jwtToken
+      })
       .withAutomaticReconnect()
       .build();
+
 
     signalRConnectionRef.current = connection;
 
@@ -154,19 +167,15 @@ function App() {
 
     await connection.start();
 
-    const connId = await connection.invoke('GetConnectionId');
-    setConnectionId(connId);
   };
 
-  const handleOffer = async (signal, senderConnectionId) => {
+  const handleOffer = async (signal) => {
     if (!peerConnectionRef.current) {
       console.error("peerConnection chưa được khởi tạo");
       return;
     }
 
     console.log("Handling Offer...");
-
-    setTargetConnectionId(senderConnectionId);
 
     try {
       let offerSession = new RTCSessionDescription({
@@ -187,7 +196,7 @@ function App() {
     await peerConnectionRef.current.setLocalDescription(answer);
 
 
-    await signalRConnectionRef.current.invoke("SendSignal", senderConnectionId, JSON.stringify({
+    await signalRConnectionRef.current.invoke("SendSignal", JSON.stringify({
       type: "answer",
       sdp: answer.sdp,
     }));
@@ -231,10 +240,8 @@ function App() {
 
   return (
     <div style={{ padding: "20px" }}>
-      <div style={{ marginBottom: "20px" }}>
-        <p><strong>Your Connection ID:</strong> {connectionId}</p>
-        <p><strong>App Connection ID:</strong> {targetConnectionId}</p>
-
+      <div>
+        <h3>Thông tin kết nối</h3>
         <div>
           {isConnected ? (
             <p style={{ color: 'green' }}>Đã kết nối thành công!</p>
@@ -250,21 +257,7 @@ function App() {
         aspectRatio: '16/9', // Set proper aspect ratio
         overflow: 'hidden'
       }}>
-        <video
-          id="remoteVideo"
-          autoPlay
-          playsInline
-          ref={(video) => {
-            if (video) video.srcObject = remoteStream;
-          }}
-          style={{
-            width: '100%',
-            height: '100%',
-            objectFit: 'cover', // or 'contain' based on your needs
-            border: '1px solid #ccc',
-            borderRadius: '8px'
-          }}
-        />
+        <VideoComponent remoteStream={remoteStream} />
       </div>
 
 
